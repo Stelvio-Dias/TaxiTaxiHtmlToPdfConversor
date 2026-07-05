@@ -1,8 +1,6 @@
 # Base Debian (node:slim)
 FROM node:22-slim
 
-# Chromium + fontes (fonts-liberation para texto comum; fonts-noto-* para
-# acentos/símbolos garantidos). ca-certificates para HTTPS em recursos remotos.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
     fonts-liberation \
@@ -17,9 +15,8 @@ ENV PORT=3000
 
 WORKDIR /app
 
-# Instalar dependências primeiro
 COPY package*.json ./
-RUN npm ci --omit=dev
+RUN npm install --omit=dev
 
 COPY . .
 

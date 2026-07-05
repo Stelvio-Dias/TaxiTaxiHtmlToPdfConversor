@@ -74,7 +74,9 @@ Regista um `HttpClient` e chama o serviço:
 // Program.cs
 builder.Services.AddHttpClient("pdf", c =>
 {
-    c.BaseAddress = new Uri("http://localhost:3000"); // ou o host do container
+    c.BaseAddress = new Uri("https://o-teu-servico.onrender.com"); // host do serviço
+    // A mesma chave que definiste na env var API_KEY do serviço Node.
+    c.DefaultRequestHeaders.Add("X-Api-Key", builder.Configuration["Pdf:ApiKey"]);
 });
 ```
 
@@ -96,6 +98,8 @@ public class PdfService
 }
 ```
 
+Guarda a chave no teu `appsettings`/User Secrets (`Pdf:ApiKey`), nunca no código.
+
 No controller devolves o PDF ao Angular como já fazes:
 
 ```csharp
@@ -107,6 +111,58 @@ public async Task<IActionResult> GerarPdf(int id)
     return File(pdf, "application/pdf", $"fatura-{id}.pdf");
 }
 ```
+
+## Segurança (endpoint público)
+
+Como este serviço fica noutro host e é chamado pela internet, protege o `/pdf`
+com uma chave partilhada. Define a env var `API_KEY` no serviço; todos os
+pedidos a `/pdf` passam a exigir o header `X-Api-Key` com esse valor. O
+`/health` fica sempre aberto (as plataformas precisam dele).
+
+- Sem `API_KEY` definida → endpoint aberto (só para dev local).
+- Com `API_KEY` definida → sem o header certo, resposta `401`.
+
+Gera uma chave forte, por exemplo:
+
+```bash
+openssl rand -hex 32
+```
+
+## Deploy no Render (grátis) — passo a passo
+
+1. **Põe o código num repositório Git** (GitHub/GitLab). Confirma que estão lá
+   o `server.js`, `package.json`, `package-lock.json`, `Dockerfile` e
+   `.dockerignore`.
+2. Cria conta em **render.com** e clica em **New → Web Service**.
+3. **Liga o repositório**. O Render deteta o `Dockerfile` automaticamente; o
+   tipo de deploy deve ficar como **Docker**.
+4. **Configura o serviço:**
+   - *Instance Type:* **Free**
+   - *Region:* a mais próxima (ex.: Frankfurt, para latência mais baixa desde Angola)
+   - *Health Check Path:* `/health`
+5. **Variáveis de ambiente** (secção *Environment*):
+   - `API_KEY` = a chave que geraste com `openssl`
+   - (`CHROMIUM_PATH` já vem fixado no Dockerfile — não precisas de a definir)
+6. Clica em **Create Web Service**. O primeiro build demora alguns minutos
+   (está a instalar o Chromium na imagem).
+7. No fim ficas com um URL tipo `https://o-teu-servico.onrender.com`.
+   Testa:
+
+   ```bash
+   curl -X POST https://o-teu-servico.onrender.com/pdf \
+     -H "Content-Type: application/json" \
+     -H "X-Api-Key: A_TUA_CHAVE" \
+     -d '{"html":"<h1>Funciona! 385.000,00 Kz</h1>"}' \
+     -o teste.pdf
+   ```
+
+8. Mete esse URL e a `API_KEY` na config do teu servidor .NET (ver acima).
+
+**Nota sobre o plano Free:** o serviço adormece após ~15 min sem tráfego, e o
+primeiro pedido a seguir demora cerca de 1 minuto a acordar (cold start). Para
+faturas ocasionais é aceitável. Se incomodar, sobe para um plano pago (elimina
+o sleep) ou migra o mesmo container/Dockerfile para uma VPS (ex.: Oracle Cloud
+Always Free, com muito mais RAM).
 
 ## Notas de produção
 
